@@ -20,6 +20,9 @@ type MiddlewareConfig struct {
 	// Rules MUST NOT read or depend on r.Body.
 	Rules []Rule
 
+	// Evaluators calculate additive reputation score.
+	Evaluators []Evaluator
+
 	// FailOpen allows traffic when Redis is unavailable or returns an error.
 	FailOpen bool
 
@@ -74,8 +77,15 @@ type MiddlewareConfig struct {
 	// DynamicRules allows hot-swapping signatures without recreating Engine.
 	DynamicRules *RulesetManager
 
+	// AutoReloadOnSIGHUP enables ruleset hot reload on POSIX SIGHUP signal.
+	// Applicable when RulesetFile or DynamicRules is configured.
+	AutoReloadOnSIGHUP bool
+
 	// Behavioral enables risk scoring and penalty-box flow.
 	Behavioral BehavioralConfig
+
+	// Reputation controls score pipeline and dynamic backoff bans.
+	Reputation ReputationConfig
 }
 
 type AdaptiveBanConfig struct {
@@ -169,6 +179,34 @@ type BehavioralConfig struct {
 
 	// DiversityWeight contributes to risk when thresholds exceeded.
 	DiversityWeight int64
+}
+
+type ReputationConfig struct {
+	Enabled bool
+
+	// WarningLevel moves actor into penalty box.
+	WarningLevel float64
+
+	// Threshold triggers blacklist via reputation Lua script.
+	Threshold float64
+
+	// ScoreWindow controls reputation hash TTL.
+	ScoreWindow time.Duration
+
+	// PenaltyTTL is strict-mode duration.
+	PenaltyTTL time.Duration
+
+	// BackoffWindow controls how long attack attempt counter lives.
+	BackoffWindow time.Duration
+
+	// BanLevel1 is ban duration for first serious attack.
+	BanLevel1 time.Duration
+
+	// BanLevel2 is ban duration for second serious attack.
+	BanLevel2 time.Duration
+
+	// BanLevel3 is ban duration for third and next attack.
+	BanLevel3 time.Duration
 }
 
 func (cfg *MiddlewareConfig) withDefaults() MiddlewareConfig {
@@ -265,6 +303,36 @@ func (cfg *MiddlewareConfig) withDefaults() MiddlewareConfig {
 	}
 	if out.Behavioral.DiversityWeight <= 0 {
 		out.Behavioral.DiversityWeight = 5
+	}
+	if (out.RulesetFile != "" || out.DynamicRules != nil) && !out.AutoReloadOnSIGHUP {
+		out.AutoReloadOnSIGHUP = true
+	}
+	if out.Reputation.WarningLevel <= 0 {
+		out.Reputation.WarningLevel = 60
+	}
+	if out.Reputation.Threshold <= 0 {
+		out.Reputation.Threshold = 100
+	}
+	if out.Reputation.ScoreWindow <= 0 {
+		out.Reputation.ScoreWindow = 15 * time.Minute
+	}
+	if out.Reputation.PenaltyTTL <= 0 {
+		out.Reputation.PenaltyTTL = 30 * time.Minute
+	}
+	if out.Reputation.BackoffWindow <= 0 {
+		out.Reputation.BackoffWindow = 24 * time.Hour
+	}
+	if out.Reputation.BanLevel1 <= 0 {
+		out.Reputation.BanLevel1 = time.Minute
+	}
+	if out.Reputation.BanLevel2 <= 0 {
+		out.Reputation.BanLevel2 = 10 * time.Minute
+	}
+	if out.Reputation.BanLevel3 <= 0 {
+		out.Reputation.BanLevel3 = 24 * time.Hour
+	}
+	if out.Reputation.Enabled {
+		out.Behavioral.Enabled = true
 	}
 	return out
 }

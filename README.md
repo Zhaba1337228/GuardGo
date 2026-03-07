@@ -1,15 +1,19 @@
 # GuardGo
 
-GuardGo is a Redis-backed API protection library for Go:
-- atomic critical path via one Redis Lua call (`SISMEMBER + INCR + EXPIRE`)
-- local blacklist LRU cache for fast-path blocks
-- async rule engine for adaptive bans
+GuardGo is a Redis-backed API protection library for Go focused on high-load APIs.
+
+Core ideas:
+- atomic critical path via Redis Lua
+- in-memory fast path (`LRU` + `Bloom`)
+- reputation scoring pipeline (rules + evaluators + behavioral entropy)
+- dynamic penalty and blacklist backoff
+- framework adapters and operational tooling (`agent`, `cli`)
 
 ## Install
 
 ```bash
-go get github.com/redis/go-redis/v9
 go get guardgo
+go get github.com/redis/go-redis/v9
 ```
 
 ## Quick Start (`net/http`)
@@ -28,21 +32,22 @@ import (
 func main() {
 	rdb := redis.NewClient(&redis.Options{Addr: "127.0.0.1:6379"})
 
-cfg := guardgo.NewConfig(rdb, 200, 1*time.Second)
-cfg.FailOpen = true
-cfg.AdaptiveBan.Enabled = true
-cfg.Bloom.Enabled = true
-cfg.Bloom.Bits = 1 << 20
-cfg.Bloom.Hashes = 6
-cfg.Tracing.Enabled = true
-cfg.SelfHealing.Enabled = true
+	cfg := guardgo.NewConfig(rdb, 200, 1*time.Second)
+	cfg.FailOpen = true
+	cfg.Bloom.Enabled = true
+	cfg.Reputation.Enabled = true
+	cfg.Reputation.WarningLevel = 60
+	cfg.Reputation.Threshold = 100
 
-mw := guardgo.MustGuard(cfg)
+	engine := guardgo.New(cfg)
+	defer engine.Close()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 
-http.ListenAndServe(":8080", mw(mux))
+	_ = http.ListenAndServe(":8080", engine.Middleware(mux))
 }
 ```
 
@@ -53,167 +58,120 @@ guard := guardgo.New(guardgo.DefaultConfig())
 defer guard.Close()
 ```
 
-`DefaultConfig()` uses:
+Defaults:
 - Redis: `127.0.0.1:6379`
-- rate limit: `1000` requests per `1s`
+- limit: `1000` req / `1s`
 
-## Gin
+## Framework Adapters
 
-```go
-import (
-	guardging "guardgo/adapters/gin"
-)
-
-router := gin.New()
-router.Use(guardging.Guard(cfg))
-```
-
-Unified plugin-style API:
+Unified wrappers:
 
 ```go
-guard := guardgo.New(guardgo.DefaultConfig())
-router := gin.New()
-router.Use(guardgo.Gin(guard))
+router.Use(guardgo.Gin(engine))
+e.Use(guardgo.Echo(engine))
+app.Use(guardgo.Fiber(engine))
 ```
 
-## Echo
+Legacy adapters:
+- `guardgo/adapters/gin`
+- `guardgo/adapters/echo`
+- `guardgo/adapters/fiber`
+
+## Security Model
+
+GuardGo evaluates traffic using a score pipeline:
+- static `Rule` checks
+- score-based `Evaluator` checks
+- DFA signature matching from YAML/JSON rulesets
+- behavioral entropy signals (query/header diversity)
+- fingerprinting (`IP + User-Agent + Accept-Language`)
+
+Decisions:
+- score `< WarningLevel`: normal flow
+- score `>= WarningLevel`: penalty mode
+- score `>= Threshold`: blacklist
+
+## Dynamic Backoff
+
+Reputation Lua applies escalating bans:
+- attack #1: `BanLevel1` (default `1m`)
+- attack #2: `BanLevel2` (default `10m`)
+- attack #3+: `BanLevel3` (default `24h`)
+
+## Hot Reload (Zero-Downtime)
+
+If `RulesetFile` or `DynamicRules` is configured, GuardGo can hot-reload rules on POSIX `SIGHUP`:
+
+```bash
+kill -HUP <pid>
+```
+
+No process restart required.
+
+## Presets
+
+Built-in baseline signatures:
 
 ```go
-import (
-	guardecho "guardgo/adapters/echo"
-)
-
-e := echo.New()
-e.Use(guardecho.Guard(cfg))
+presets := rules.DefaultSecurityPresets()
+_ = presets // write to rules.yaml and set cfg.RulesetFile
 ```
 
-## Fiber
+Includes common SQLi/probing/traversal/scanner patterns.
 
-```go
-import (
-	guardfiber "guardgo/adapters/fiber"
-)
+## Observability
 
-app := fiber.New()
-app.Use(guardfiber.Guard(cfg))
-```
+- OpenTelemetry spans (`guardgo.process`)
+- generic `StatsCollector` interface
+- Prometheus sidecar: `cmd/guardgo-agent`
+- live terminal dashboard: `cmd/guardgo-cli`
 
-## Standard Rate-Limit Headers
-
-GuardGo automatically writes these headers on both allowed and blocked responses:
-- `X-RateLimit-Limit`
-- `X-RateLimit-Remaining`
-- `X-RateLimit-Reset` (unix timestamp)
-- `X-RateLimit-Reset-At` (RFC3339 UTC)
-
-## Built-in Rules
-
-```go
-import "guardgo/rules"
-
-cfg.Rules = []guardgo.Rule{
-	rules.PathContains{Tokens: []string{"/wp-admin", "/xmlrpc.php"}, Weight: 2},
-	rules.QueryContains{Tokens: []string{"union select", "or 1=1"}, Weight: 3},
-	rules.HeaderContains{Name: "User-Agent", Tokens: []string{"sqlmap", "nikto"}, Weight: 5},
-}
-```
-
-## Optional Stats Collector
-
-```go
-type myStats struct{}
-
-func (myStats) Record(name string, value float64, labels map[string]string) {
-	// forward to your telemetry backend
-}
-
-cfg.Stats = myStats{}
-```
-
-## OpenTelemetry Tracing
-
-When `cfg.Tracing.Enabled = true`, GuardGo creates a span `guardgo.process` and adds attributes:
-- `guardgo.allowed`
-- `guardgo.reason`
-- `guardgo.counter`
-- `guardgo.limit`
-- `guardgo.remaining`
-- `guardgo.redis_ms`
-
-## Self-Healing Adaptive Limits
-
-Enable adaptive behavior model:
-
-```go
-cfg.SelfHealing.Enabled = true
-cfg.SelfHealing.MinSamples = 500
-cfg.SelfHealing.CleanTrafficThreshold = 0.9
-cfg.SelfHealing.SpikeFactor = 3.0
-```
-
-When clean traffic dominates and one IP suddenly spikes, GuardGo lowers the effective limit for that period.
-
-## DFA Signatures + Hot-Swap Rulesets
-
-GuardGo compiles signature tokens into a DFA matcher (`O(N)` single-pass scan).
-
-Load from file:
-
-```go
-cfg.RulesetFile = "./rules.yaml"
-cfg.Behavioral.Enabled = true
-```
-
-Hot-swap programmatically:
-
-```go
-manager, _ := guardgo.NewRulesetManager("./rules.yaml")
-cfg.DynamicRules = manager
-// manager.Reload() on SIGHUP or admin endpoint
-```
-
-Example `rules.yaml`:
-
-```yaml
-rules:
-  - name: "SQLi Injection"
-    match: "query"
-    pattern: "(?i)(union|select|drop|insert)"
-    weight: 10
-  - name: "Header Probe"
-    match: "headers"
-    pattern: "keep-alive"
-    weight: 20
-```
-
-## Penalty Box
-
-Enable behavioral score and strict mode:
-
-```go
-cfg.Behavioral.Enabled = true
-cfg.Behavioral.ScoreThreshold = 100
-cfg.Behavioral.RequireUserAgent = true
-cfg.Behavioral.RequireReferer = true
-```
-
-When score exceeds threshold, IP enters penalty mode. Failed strict checks return `403` and trigger a long ban (`PenaltyBanTTL`).
-
-## GuardGo Agent (Sidecar)
-
-Run agent next to your API pod to expose Redis protection metrics for Prometheus/Grafana:
+Run tools:
 
 ```bash
 go run ./cmd/guardgo-agent --redis-addr 127.0.0.1:6379 --prefix guardgo --listen :9090
+go run ./cmd/guardgo-cli --redis-addr 127.0.0.1:6379 --prefix guardgo --ruleset ./rules.yaml
 ```
 
-Metrics endpoint:
-- `http://127.0.0.1:9090/metrics`
+## Real Benchmark Results
+
+Measured on:
+- CPU: `12th Gen Intel(R) Core(TM) i5-12400`
+- OS: `windows/amd64`
+- Date: `2026-03-08`
+
+| Case | Latency | Throughput (approx) | Allocations |
+|---|---:|---:|---:|
+| Clean Request (Bloom) | `11.8ns` | `~84M ops/s` | `0 B/op, 0 allocs/op` |
+| DFA Match (100 rules) | `~454ns` | `~2.2M ops/s` | `24 B/op, 1 alloc/op` |
+| Redis Fallback (miniredis parallel) | `205-225µs` | `~4.4K ops/s/core-equivalent` | `~206KB/op, 836 allocs/op` |
+
+Commands used:
+
+```bash
+go test ./pkg/bloom -run ^$ -bench BenchmarkBloomCleanRequest -benchmem -benchtime=5s -count=5
+go test ./pkg/dfa -run ^$ -bench BenchmarkDFA100RulesMatch -benchmem -benchtime=5s -count=5
+go test ./tests/load -run ^$ -bench BenchmarkEngineCheckParallel -benchmem -benchtime=10s -count=5
+```
+
+For real network Redis fallback (recommended for production profiling), set `REDIS_ADDR` and run:
+
+```bash
+go test ./tests/load -run ^$ -bench BenchmarkRedisFallbackRealRedis -benchmem -benchtime=10s -count=5
+```
 
 ## Testing
 
 ```bash
 go test ./...
-go test -race ./tests/load -count=1
-go test ./tests/load -bench BenchmarkEngineCheck -benchmem -run ^$ -benchtime=2s
+go test -race ./tests/integration -count=1
+go test ./tests/load -bench . -benchmem -run ^$
+go test -tags chaos ./tests/chaos -v -count=1
 ```
+
+## Repository Docs
+
+- Architecture: `docs/ARCHITECTURE.md`
+- Project layout: `docs/PROJECT_LAYOUT.md`
+- Examples: `examples/`
+

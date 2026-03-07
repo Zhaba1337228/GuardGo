@@ -9,3 +9,9 @@ import "net/http"
 type Rule interface {
 	Evaluate(r *http.Request) int
 }
+
+// Evaluator calculates request risk score.
+// Returned value is added to reputation score for current actor.
+type Evaluator interface {
+	CalculateScore(r *http.Request) float64
+}

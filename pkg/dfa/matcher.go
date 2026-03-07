@@ -130,3 +130,17 @@ func (m *Matcher) FindAll(text string) []Match {
 	}
 	return matches
 }
+
+func (m *Matcher) RuleCount() int {
+	if m == nil {
+		return 0
+	}
+	return len(m.rules)
+}
+
+func (m *Matcher) NodeCount() int {
+	if m == nil {
+		return 0
+	}
+	return len(m.nodes)
+}

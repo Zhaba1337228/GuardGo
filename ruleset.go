@@ -44,6 +44,19 @@ type CompiledRuleset struct {
 	Path    *dfa.Matcher
 }
 
+type RulesetStats struct {
+	AnyRules    int
+	QueryRules  int
+	HeaderRules int
+	PathRules   int
+	AnyNodes    int
+	QueryNodes  int
+	HeaderNodes int
+	PathNodes   int
+	TotalRules  int
+	TotalNodes  int
+}
+
 type RulesetManager struct {
 	path string
 	cur  atomic.Pointer[CompiledRuleset]
@@ -138,6 +151,25 @@ func CompileRuleset(rules []SignatureRule) *CompiledRuleset {
 		Headers: dfa.New(headerRules),
 		Path:    dfa.New(pathRules),
 	}
+}
+
+func (r *CompiledRuleset) Stats() RulesetStats {
+	if r == nil {
+		return RulesetStats{}
+	}
+	stats := RulesetStats{
+		AnyRules:    r.Any.RuleCount(),
+		QueryRules:  r.Query.RuleCount(),
+		HeaderRules: r.Headers.RuleCount(),
+		PathRules:   r.Path.RuleCount(),
+		AnyNodes:    r.Any.NodeCount(),
+		QueryNodes:  r.Query.NodeCount(),
+		HeaderNodes: r.Headers.NodeCount(),
+		PathNodes:   r.Path.NodeCount(),
+	}
+	stats.TotalRules = stats.AnyRules + stats.QueryRules + stats.HeaderRules + stats.PathRules
+	stats.TotalNodes = stats.AnyNodes + stats.QueryNodes + stats.HeaderNodes + stats.PathNodes
+	return stats
 }
 
 func extractPatternTokens(pattern string) []string {

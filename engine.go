@@ -35,6 +35,8 @@ type Engine struct {
 	reqPool sync.Pool
 
 	analysisCh chan *requestSnapshot
+
+	hotReloadStop func()
 }
 
 // Config returns effective engine configuration with defaults applied.
@@ -49,6 +51,8 @@ type requestSnapshot struct {
 	host   string
 	path   string
 	rawQ   string
+	ua     string
+	lang   string
 	hdr    http.Header
 	ts     time.Time
 }
@@ -98,7 +102,12 @@ func NewEngine(cfg MiddlewareConfig) (*Engine, error) {
 		e.compiled = manager.Current()
 	}
 
-	shouldRunBackground := (cfg.AdaptiveBan.Enabled && len(cfg.Rules) > 0) || cfg.Behavioral.Enabled || cfg.RulesetFile != "" || cfg.DynamicRules != nil
+	shouldRunBackground := (cfg.AdaptiveBan.Enabled && len(cfg.Rules) > 0) ||
+		cfg.Behavioral.Enabled ||
+		cfg.Reputation.Enabled ||
+		len(cfg.Evaluators) > 0 ||
+		cfg.RulesetFile != "" ||
+		cfg.DynamicRules != nil
 	if shouldRunBackground {
 		workers := cfg.AdaptiveBan.Workers
 		if workers <= 0 {
@@ -107,11 +116,15 @@ func NewEngine(cfg MiddlewareConfig) (*Engine, error) {
 		e.analysisCh = make(chan *requestSnapshot, cfg.AdaptiveBan.QueueSize)
 		e.startBackground(workers)
 	}
+	e.startSignalHotReload()
 
 	return e, nil
 }
 
 func (e *Engine) Close() {
+	if e.hotReloadStop != nil {
+		e.hotReloadStop()
+	}
 	if e.analysisCh == nil {
 		return
 	}
@@ -154,20 +167,24 @@ func (e *Engine) processSnapshot(s *requestSnapshot) {
 		},
 		Header: s.hdr,
 	}
-	weight := 0
+	score := 0.0
 	for _, rule := range e.cfg.Rules {
-		weight += rule.Evaluate(r)
+		score += float64(rule.Evaluate(r))
+	}
+	for _, evaluator := range e.cfg.Evaluators {
+		score += evaluator.CalculateScore(r)
 	}
 	if e.compiled != nil {
-		weight += int(e.evaluateRuleset(r))
+		score += float64(e.evaluateRuleset(r))
 	}
 	if e.behavior != nil {
-		weight += int(e.behavior.observe(s.ip, r, s.ts))
+		score += float64(e.behavior.observe(s.ip, r, s.ts))
 	}
 
-	if weight > 0 {
-		e.recordStat("risk_score_add_total", float64(weight), map[string]string{"source": "behavioral"})
+	if score <= 0 {
+		return
 	}
+	e.recordStat("risk_score_add_total", score, map[string]string{"source": "pipeline"})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 	defer cancel()
@@ -176,23 +193,30 @@ func (e *Engine) processSnapshot(s *requestSnapshot) {
 	if ip == "" {
 		return
 	}
-
-	if weight > 0 {
-		prefix := e.cfg.Prefix
-		riskKey := prefix + ":risk:" + ip
-		pipe := e.cfg.Redis.Pipeline()
-		riskIncr := pipe.IncrBy(ctx, riskKey, int64(weight))
-		pipe.PExpire(ctx, riskKey, e.cfg.Behavioral.RiskWindow)
-		_, err := pipe.Exec(ctx)
+	if e.cfg.Reputation.Enabled {
+		action, banTTL, attempts, err := e.applyReputationScore(ctx, s, score)
 		if err != nil {
 			e.cfg.Metrics.IncRedisErrors()
-			e.recordStat("redis_errors_total", 1, map[string]string{"op": "risk_increment"})
+			e.recordStat("redis_errors_total", 1, map[string]string{"op": "reputation_lua"})
 			if e.cfg.OnError != nil {
 				e.cfg.OnError(err)
 			}
-		} else if riskIncr.Val() >= e.cfg.Behavioral.ScoreThreshold {
-			_ = e.setPenalty(ctx, ip, e.cfg.Behavioral.PenaltyTTL)
+		} else {
+			switch action {
+			case 1:
+				_ = e.setPenalty(ctx, ip, e.cfg.Reputation.PenaltyTTL)
+			case 2:
+				e.cache.Blacklist(ip, time.Now().Add(banTTL))
+				if e.bf != nil {
+					e.bf.Add(ip)
+				}
+				e.recordStat("reputation_blacklist_total", 1, map[string]string{
+					"attempt": strconv.FormatInt(attempts, 10),
+				})
+			}
 		}
+	} else if score >= float64(e.cfg.Behavioral.ScoreThreshold) {
+		_ = e.setPenalty(ctx, ip, e.cfg.Behavioral.PenaltyTTL)
 	}
 
 	if e.cfg.AdaptiveBan.Enabled {
@@ -241,6 +265,8 @@ func (e *Engine) snapshotFromRequest(r *http.Request, ip, key string, now time.T
 		s.path = r.URL.Path
 		s.rawQ = r.URL.RawQuery
 	}
+	s.ua = r.Header.Get("User-Agent")
+	s.lang = r.Header.Get("Accept-Language")
 
 	if len(e.cfg.AdaptiveBan.CaptureHeaders) > 0 {
 		if s.hdr == nil {
@@ -322,9 +348,13 @@ func (e *Engine) Process(ctx context.Context, r *http.Request) Decision {
 		inPenalty, penaltyTTL := e.isInPenalty(ctx, ip, now)
 		if inPenalty {
 			if !e.passesPenaltyChecks(r) {
-				_ = e.banIP(ctx, ip, e.cfg.Behavioral.PenaltyBanTTL)
+				banTTL := e.cfg.Behavioral.PenaltyBanTTL
+				if e.cfg.Reputation.Enabled {
+					banTTL = e.cfg.Reputation.BanLevel3
+				}
+				_ = e.banIP(ctx, ip, banTTL)
 				e.recordRequestStat("blocked", "penalty_forbidden")
-				d := newDecisionWithTTL(false, ReasonPenaltyForbidden, 0, 1, now, int64(e.cfg.Behavioral.PenaltyBanTTL/time.Millisecond), e.cfg.Window)
+				d := newDecisionWithTTL(false, ReasonPenaltyForbidden, 0, 1, now, int64(banTTL/time.Millisecond), e.cfg.Window)
 				d.StatusCode = http.StatusForbidden
 				e.finishDecision(now, span, d, redisDurationMs)
 				return d
@@ -627,6 +657,9 @@ func (e *Engine) penaltyKey(ip string) string {
 
 func (e *Engine) isInPenalty(ctx context.Context, ip string, now time.Time) (bool, time.Duration) {
 	if e.pbox.IsBlacklisted(ip, now) {
+		if e.cfg.Reputation.Enabled {
+			return true, e.cfg.Reputation.PenaltyTTL
+		}
 		return true, e.cfg.Behavioral.PenaltyTTL
 	}
 	ttl, err := e.cfg.Redis.PTTL(ctx, e.penaltyKey(ip)).Result()
@@ -652,6 +685,61 @@ func (e *Engine) setPenalty(ctx context.Context, ip string, ttl time.Duration) e
 	e.pbox.Blacklist(ip, time.Now().Add(ttl))
 	e.recordStat("penalty_box_entries_total", 1, map[string]string{"reason": "risk_threshold"})
 	return nil
+}
+
+func (e *Engine) applyReputationScore(ctx context.Context, s *requestSnapshot, score float64) (action int64, banTTL time.Duration, attempts int64, err error) {
+	repKey := e.cfg.Prefix + ":rep"
+	field := reputationField(s)
+	penaltyKey := e.penaltyKey(s.ip)
+	blKey, _ := e.redisKeysFor(s.ip, s.ip)
+	attemptKey := e.cfg.Prefix + ":ban_attempts:" + s.ip
+
+	res, runErr := redislua.ReputationScript.Run(
+		ctx,
+		e.cfg.Redis,
+		[]string{repKey, penaltyKey, blKey, attemptKey},
+		field,
+		score,
+		e.cfg.Reputation.ScoreWindow.Milliseconds(),
+		e.cfg.Reputation.WarningLevel,
+		e.cfg.Reputation.Threshold,
+		e.cfg.Reputation.PenaltyTTL.Milliseconds(),
+		e.cfg.Reputation.BackoffWindow.Milliseconds(),
+		e.cfg.Reputation.BanLevel1.Milliseconds(),
+		e.cfg.Reputation.BanLevel2.Milliseconds(),
+		e.cfg.Reputation.BanLevel3.Milliseconds(),
+	).Result()
+	if runErr != nil {
+		return 0, 0, 0, runErr
+	}
+
+	arr, ok := res.([]any)
+	if !ok || len(arr) < 4 {
+		return 0, 0, 0, nil
+	}
+	if v, ok := arr[1].(int64); ok {
+		action = v
+	}
+	if v, ok := arr[2].(int64); ok {
+		banTTL = time.Duration(v) * time.Millisecond
+	}
+	if v, ok := arr[3].(int64); ok {
+		attempts = v
+	}
+	return action, banTTL, attempts, nil
+}
+
+func reputationField(s *requestSnapshot) string {
+	fp := fingerprint(s.ip, s.ua, s.lang)
+	return s.ip + "|" + fp
+}
+
+func fingerprint(ip string, ua string, lang string) string {
+	raw := strings.ToLower(strings.TrimSpace(ip)) + "|" +
+		strings.ToLower(strings.TrimSpace(ua)) + "|" +
+		strings.ToLower(strings.TrimSpace(lang))
+	h := hash64(raw)
+	return strconv.FormatUint(h, 16)
 }
 
 func (e *Engine) passesPenaltyChecks(r *http.Request) bool {
