@@ -22,6 +22,20 @@ func NewWithError(cfg MiddlewareConfig) (*Engine, error) {
 	return NewEngine(cfg)
 }
 
+// NewDefault creates Engine with DefaultConfig.
+func NewDefault() *Engine {
+	return New(DefaultConfig())
+}
+
+// NewWithRedisAddr creates Engine using only Redis address and defaults.
+func NewWithRedisAddr(redisAddr string) *Engine {
+	cfg := DefaultConfig()
+	if redisAddr != "" {
+		cfg.Redis = redis.NewClient(&redis.Options{Addr: redisAddr})
+	}
+	return New(cfg)
+}
+
 // MustNew returns a new Engine instance or panics.
 func MustNew(cfg MiddlewareConfig) *Engine {
 	return New(cfg)
@@ -34,6 +48,11 @@ func NewConfig(redisClient *redis.Client, maxRequests int, window time.Duration)
 		MaxRequests: maxRequests,
 		Window:      window,
 	}
+}
+
+// NewConfigFromRedisAddr creates minimal config from Redis address.
+func NewConfigFromRedisAddr(redisAddr string, maxRequests int, window time.Duration) MiddlewareConfig {
+	return NewConfig(redis.NewClient(&redis.Options{Addr: redisAddr}), maxRequests, window)
 }
 
 // Guard returns net/http middleware from config.

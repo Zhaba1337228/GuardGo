@@ -62,6 +62,14 @@ Defaults:
 - Redis: `127.0.0.1:6379`
 - limit: `1000` req / `1s`
 
+Integration shortcuts:
+
+```go
+engine := guardgo.NewDefault()
+engine2 := guardgo.NewWithRedisAddr("10.0.0.12:6379")
+cfg := guardgo.NewConfigFromRedisAddr("127.0.0.1:6379", 200, time.Second)
+```
+
 ## Framework Adapters
 
 Unified wrappers:
@@ -113,8 +121,7 @@ No process restart required.
 Built-in baseline signatures:
 
 ```go
-presets := rules.DefaultSecurityPresets()
-_ = presets // write to rules.yaml and set cfg.RulesetFile
+rules.ApplyDefaultSecurityPresets(&cfg) // in-memory, no rules.yaml needed
 ```
 
 Includes common SQLi/probing/traversal/scanner patterns.
@@ -173,5 +180,5 @@ go test -tags chaos ./tests/chaos -v -count=1
 
 - Architecture: `docs/ARCHITECTURE.md`
 - Project layout: `docs/PROJECT_LAYOUT.md`
+- API methods: `docs/API.md`
 - Examples: `examples/`
-

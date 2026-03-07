@@ -1,6 +1,10 @@
 package rules
 
-import "testing"
+import (
+	"testing"
+
+	"guardgo"
+)
 
 func TestDefaultSecurityPresets(t *testing.T) {
 	presets := DefaultSecurityPresets()
@@ -11,5 +15,17 @@ func TestDefaultSecurityPresets(t *testing.T) {
 		if preset.Name == "" || preset.Pattern == "" || preset.Weight <= 0 {
 			t.Fatalf("invalid preset detected: %+v", preset)
 		}
+	}
+}
+
+func TestApplyDefaultSecurityPresets(t *testing.T) {
+	cfg := &guardgo.MiddlewareConfig{}
+	ApplyDefaultSecurityPresets(cfg)
+	if cfg.CompiledRules == nil {
+		t.Fatalf("expected compiled rules to be set")
+	}
+	stats := cfg.CompiledRules.Stats()
+	if stats.TotalRules == 0 {
+		t.Fatalf("expected non-empty compiled rules stats")
 	}
 }

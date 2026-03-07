@@ -37,3 +37,12 @@ func DefaultSecurityPresets() []guardgo.SignatureRule {
 		},
 	}
 }
+
+// ApplyDefaultSecurityPresets compiles and assigns default presets directly.
+// This is the easiest way to enable baseline protection without rules.yaml.
+func ApplyDefaultSecurityPresets(cfg *guardgo.MiddlewareConfig) {
+	if cfg == nil {
+		return
+	}
+	cfg.CompiledRules = guardgo.CompileRuleset(DefaultSecurityPresets())
+}

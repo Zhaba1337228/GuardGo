@@ -29,3 +29,4 @@
 ## Examples
 - `examples/nethttp-basic`: minimal net/http integration.
 - `examples/gin-basic`: minimal Gin integration.
+- `examples/presets-basic`: one-line default security presets integration.

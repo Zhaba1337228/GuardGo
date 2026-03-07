@@ -77,6 +77,9 @@ type MiddlewareConfig struct {
 	// DynamicRules allows hot-swapping signatures without recreating Engine.
 	DynamicRules *RulesetManager
 
+	// CompiledRules allows direct in-memory ruleset wiring (no file required).
+	CompiledRules *CompiledRuleset
+
 	// AutoReloadOnSIGHUP enables ruleset hot reload on POSIX SIGHUP signal.
 	// Applicable when RulesetFile or DynamicRules is configured.
 	AutoReloadOnSIGHUP bool

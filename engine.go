@@ -93,6 +93,9 @@ func NewEngine(cfg MiddlewareConfig) (*Engine, error) {
 		e.ruleset = cfg.DynamicRules
 		e.compiled = cfg.DynamicRules.Current()
 	}
+	if cfg.CompiledRules != nil {
+		e.compiled = cfg.CompiledRules
+	}
 	if cfg.RulesetFile != "" && e.ruleset == nil {
 		manager, loadErr := NewRulesetManager(cfg.RulesetFile)
 		if loadErr != nil {
