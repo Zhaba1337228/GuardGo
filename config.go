@@ -67,6 +67,15 @@ type MiddlewareConfig struct {
 
 	// SelfHealing dynamically adjusts effective request limits based on behavior.
 	SelfHealing SelfHealingConfig
+
+	// RulesetFile points to JSON/YAML signatures loaded at startup.
+	RulesetFile string
+
+	// DynamicRules allows hot-swapping signatures without recreating Engine.
+	DynamicRules *RulesetManager
+
+	// Behavioral enables risk scoring and penalty-box flow.
+	Behavioral BehavioralConfig
 }
 
 type AdaptiveBanConfig struct {
@@ -129,6 +138,37 @@ type SelfHealingConfig struct {
 
 	// DecayStep controls how quickly sensitivity returns to normal per window.
 	DecayStep float64
+}
+
+type BehavioralConfig struct {
+	Enabled bool
+
+	// RiskWindow is TTL for per-IP risk score.
+	RiskWindow time.Duration
+
+	// ScoreThreshold pushes IP into penalty box.
+	ScoreThreshold int64
+
+	// PenaltyTTL is duration of penalty box mode.
+	PenaltyTTL time.Duration
+
+	// PenaltyBanTTL is ban duration after failed penalty checks.
+	PenaltyBanTTL time.Duration
+
+	// RequireUserAgent enforces User-Agent header in penalty mode.
+	RequireUserAgent bool
+
+	// RequireReferer enforces Referer header in penalty mode.
+	RequireReferer bool
+
+	// QueryDiversityThreshold adds risk when query diversity spikes.
+	QueryDiversityThreshold int
+
+	// HeaderDiversityThreshold adds risk when header diversity spikes.
+	HeaderDiversityThreshold int
+
+	// DiversityWeight contributes to risk when thresholds exceeded.
+	DiversityWeight int64
 }
 
 func (cfg *MiddlewareConfig) withDefaults() MiddlewareConfig {
@@ -204,6 +244,27 @@ func (cfg *MiddlewareConfig) withDefaults() MiddlewareConfig {
 	}
 	if out.SelfHealing.DecayStep <= 0 {
 		out.SelfHealing.DecayStep = 0.20
+	}
+	if out.Behavioral.RiskWindow <= 0 {
+		out.Behavioral.RiskWindow = 15 * time.Minute
+	}
+	if out.Behavioral.ScoreThreshold <= 0 {
+		out.Behavioral.ScoreThreshold = 100
+	}
+	if out.Behavioral.PenaltyTTL <= 0 {
+		out.Behavioral.PenaltyTTL = 30 * time.Minute
+	}
+	if out.Behavioral.PenaltyBanTTL <= 0 {
+		out.Behavioral.PenaltyBanTTL = 24 * time.Hour
+	}
+	if out.Behavioral.QueryDiversityThreshold <= 0 {
+		out.Behavioral.QueryDiversityThreshold = 30
+	}
+	if out.Behavioral.HeaderDiversityThreshold <= 0 {
+		out.Behavioral.HeaderDiversityThreshold = 20
+	}
+	if out.Behavioral.DiversityWeight <= 0 {
+		out.Behavioral.DiversityWeight = 5
 	}
 	return out
 }

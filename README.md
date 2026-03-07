@@ -153,6 +153,52 @@ cfg.SelfHealing.SpikeFactor = 3.0
 
 When clean traffic dominates and one IP suddenly spikes, GuardGo lowers the effective limit for that period.
 
+## DFA Signatures + Hot-Swap Rulesets
+
+GuardGo compiles signature tokens into a DFA matcher (`O(N)` single-pass scan).
+
+Load from file:
+
+```go
+cfg.RulesetFile = "./rules.yaml"
+cfg.Behavioral.Enabled = true
+```
+
+Hot-swap programmatically:
+
+```go
+manager, _ := guardgo.NewRulesetManager("./rules.yaml")
+cfg.DynamicRules = manager
+// manager.Reload() on SIGHUP or admin endpoint
+```
+
+Example `rules.yaml`:
+
+```yaml
+rules:
+  - name: "SQLi Injection"
+    match: "query"
+    pattern: "(?i)(union|select|drop|insert)"
+    weight: 10
+  - name: "Header Probe"
+    match: "headers"
+    pattern: "keep-alive"
+    weight: 20
+```
+
+## Penalty Box
+
+Enable behavioral score and strict mode:
+
+```go
+cfg.Behavioral.Enabled = true
+cfg.Behavioral.ScoreThreshold = 100
+cfg.Behavioral.RequireUserAgent = true
+cfg.Behavioral.RequireReferer = true
+```
+
+When score exceeds threshold, IP enters penalty mode. Failed strict checks return `403` and trigger a long ban (`PenaltyBanTTL`).
+
 ## GuardGo Agent (Sidecar)
 
 Run agent next to your API pod to expose Redis protection metrics for Prometheus/Grafana:

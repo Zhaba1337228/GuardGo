@@ -33,7 +33,7 @@ func GuardWithEngine(cfg guardgo.MiddlewareConfig) (echo.MiddlewareFunc, *guardg
 			decision := engine.Process(c.Request().Context(), c.Request())
 			guardgo.ApplyRateLimitHeaders(http.Header(c.Response().Header()), decision)
 			if !decision.Allowed {
-				return c.NoContent(engine.Config().DenyStatusCode)
+				return c.NoContent(decision.StatusCodeOr(engine.Config().DenyStatusCode))
 			}
 			return next(c)
 		}

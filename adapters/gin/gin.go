@@ -34,7 +34,7 @@ func GuardWithEngine(cfg guardgo.MiddlewareConfig) (gin.HandlerFunc, *guardgo.En
 		decision := e.Process(c.Request.Context(), c.Request)
 		guardgo.ApplyRateLimitHeaders(c.Writer.Header(), decision)
 		if !decision.Allowed {
-			c.AbortWithStatus(e.Config().DenyStatusCode)
+			c.AbortWithStatus(decision.StatusCodeOr(e.Config().DenyStatusCode))
 			return
 		}
 		c.Next()

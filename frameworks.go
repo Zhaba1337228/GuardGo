@@ -16,7 +16,7 @@ func Gin(engine *Engine) gin.HandlerFunc {
 		decision := engine.Process(c.Request.Context(), c.Request)
 		ApplyRateLimitHeaders(c.Writer.Header(), decision)
 		if !decision.Allowed {
-			c.AbortWithStatus(engine.Config().DenyStatusCode)
+			c.AbortWithStatus(decision.StatusCodeOr(engine.Config().DenyStatusCode))
 			return
 		}
 		c.Next()
@@ -30,7 +30,7 @@ func Echo(engine *Engine) echo.MiddlewareFunc {
 			decision := engine.Process(c.Request().Context(), c.Request())
 			ApplyRateLimitHeaders(http.Header(c.Response().Header()), decision)
 			if !decision.Allowed {
-				return c.NoContent(engine.Config().DenyStatusCode)
+				return c.NoContent(decision.StatusCodeOr(engine.Config().DenyStatusCode))
 			}
 			return next(c)
 		}
@@ -63,7 +63,7 @@ func Fiber(engine *Engine) fiber.Handler {
 			}
 		}
 		if !decision.Allowed {
-			return c.SendStatus(engine.Config().DenyStatusCode)
+			return c.SendStatus(decision.StatusCodeOr(engine.Config().DenyStatusCode))
 		}
 		return c.Next()
 	}

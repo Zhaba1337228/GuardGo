@@ -12,7 +12,7 @@ func (e *Engine) Middleware(next http.Handler) http.Handler {
 		decision := e.Process(r.Context(), r)
 		ApplyRateLimitHeaders(w.Header(), decision)
 		if !decision.Allowed {
-			w.WriteHeader(e.cfg.DenyStatusCode)
+			w.WriteHeader(decision.StatusCodeOr(e.cfg.DenyStatusCode))
 			return
 		}
 		next.ServeHTTP(w, r)

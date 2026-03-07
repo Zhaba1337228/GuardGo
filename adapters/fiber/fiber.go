@@ -50,7 +50,7 @@ func GuardWithEngine(cfg guardgo.MiddlewareConfig) (fiber.Handler, *guardgo.Engi
 			}
 		}
 		if !decision.Allowed {
-			return c.SendStatus(engine.Config().DenyStatusCode)
+			return c.SendStatus(decision.StatusCodeOr(engine.Config().DenyStatusCode))
 		}
 		return c.Next()
 	}, engine, nil

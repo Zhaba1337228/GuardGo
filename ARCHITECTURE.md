@@ -20,6 +20,15 @@
 - `pkg/bloom/filter.go`: lock-free in-memory bloom filter for blacklist candidates.
 - Flow: cache blacklist -> bloom negative short-circuit -> Redis Lua fallback.
 
+## DFA Signatures and Hot Swap
+- `pkg/dfa/matcher.go`: deterministic finite automaton matcher (`O(N)` scan).
+- `ruleset.go`: YAML/JSON ruleset loader and hot-swappable `RulesetManager`.
+- Flow: rules file -> compile to DFA -> background risk scoring.
+
+## Behavioral Engine
+- `behavior_tracker.go`: per-IP query/header diversity tracking.
+- `engine.go`: risk scoring, penalty box activation, strict checks, long ban on failure.
+
 ## Agent Sidecar
 - `cmd/guardgo-agent/main.go`: Redis scanner + Prometheus `/metrics` endpoint for sidecar mode.
 
@@ -37,3 +46,5 @@
 - `tests/load/engine_benchmark_test.go`: serial and parallel load benchmarks.
 - `tests/load/tracing_test.go`: OpenTelemetry span assertions.
 - `tests/load/self_healing_test.go`: adaptive limit assertions under burst traffic.
+- `tests/load/ruleset_test.go`: ruleset load/reload coverage.
+- `tests/load/penalty_box_test.go`: penalty-box + forbidden + ban flow.
