@@ -17,13 +17,13 @@ func (e *Engine) startProcessSpan(ctx context.Context, r *http.Request, ip strin
 
 	tracer := e.cfg.Tracing.Tracer
 	if tracer == nil {
-		tracer = otel.Tracer("guardgo")
+		tracer = otel.Tracer("github.com/Zhaba1337228/GuardGo")
 	}
 
-	ctx, span := tracer.Start(ctx, "guardgo.process", trace.WithSpanKind(trace.SpanKindInternal))
+	ctx, span := tracer.Start(ctx, "github.com/Zhaba1337228/GuardGo.process", trace.WithSpanKind(trace.SpanKindInternal))
 	span.SetAttributes(
-		attribute.String("guardgo.ip", ip),
-		attribute.String("guardgo.key", key),
+		attribute.String("github.com/Zhaba1337228/GuardGo.ip", ip),
+		attribute.String("github.com/Zhaba1337228/GuardGo.key", key),
 		attribute.String("http.method", r.Method),
 		attribute.String("http.host", r.Host),
 		attribute.String("http.path", pathFromRequest(r)),
@@ -36,12 +36,12 @@ func (e *Engine) annotateDecision(span trace.Span, d Decision, redisDurationMs f
 		return
 	}
 	span.SetAttributes(
-		attribute.Bool("guardgo.allowed", d.Allowed),
-		attribute.String("guardgo.reason", d.Reason.String()),
-		attribute.Int64("guardgo.counter", d.Counter),
-		attribute.Int("guardgo.limit", d.Limit),
-		attribute.Int("guardgo.remaining", d.Remaining),
-		attribute.Float64("guardgo.redis_ms", redisDurationMs),
+		attribute.Bool("github.com/Zhaba1337228/GuardGo.allowed", d.Allowed),
+		attribute.String("github.com/Zhaba1337228/GuardGo.reason", d.Reason.String()),
+		attribute.Int64("github.com/Zhaba1337228/GuardGo.counter", d.Counter),
+		attribute.Int("github.com/Zhaba1337228/GuardGo.limit", d.Limit),
+		attribute.Int("github.com/Zhaba1337228/GuardGo.remaining", d.Remaining),
+		attribute.Float64("github.com/Zhaba1337228/GuardGo.redis_ms", redisDurationMs),
 	)
 	if !d.Allowed {
 		span.SetStatus(codes.Error, d.Reason.String())

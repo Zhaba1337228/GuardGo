@@ -3,7 +3,7 @@ package echo
 import (
 	"net/http"
 
-	"guardgo"
+	"github.com/Zhaba1337228/GuardGo"
 
 	"github.com/labstack/echo/v4"
 )

@@ -1,6 +1,6 @@
 package rules
 
-import "guardgo"
+import "github.com/Zhaba1337228/GuardGo"
 
 // DefaultSecurityPresets returns a production-oriented baseline signatures set.
 func DefaultSecurityPresets() []guardgo.SignatureRule {

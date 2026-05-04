@@ -26,7 +26,7 @@ type MiddlewareConfig struct {
 	// FailOpen allows traffic when Redis is unavailable or returns an error.
 	FailOpen bool
 
-	// Prefix is used to build Redis keys. Default: "guardgo".
+	// Prefix is used to build Redis keys. Default: "github.com/Zhaba1337228/GuardGo".
 	Prefix string
 
 	// CacheSize is the local blacklist LRU size. Default: 4096.
@@ -215,7 +215,7 @@ type ReputationConfig struct {
 func (cfg *MiddlewareConfig) withDefaults() MiddlewareConfig {
 	out := *cfg
 	if out.Prefix == "" {
-		out.Prefix = "guardgo"
+		out.Prefix = "github.com/Zhaba1337228/GuardGo"
 	}
 	if out.CacheSize <= 0 {
 		out.CacheSize = 4096

@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"guardgo/internal/blacklist"
-	"guardgo/internal/redislua"
-	"guardgo/pkg/bloom"
+	"github.com/Zhaba1337228/GuardGo/internal/blacklist"
+	"github.com/Zhaba1337228/GuardGo/internal/redislua"
+	"github.com/Zhaba1337228/GuardGo/pkg/bloom"
 )
 
 // Engine is the request-decision core. It is safe for concurrent use after

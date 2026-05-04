@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"guardgo"
+	"github.com/Zhaba1337228/GuardGo"
 )
 
 type repEntry struct {
@@ -27,7 +27,7 @@ type blockEntry struct {
 func main() {
 	var (
 		redisAddr   = flag.String("redis-addr", "127.0.0.1:6379", "Redis address")
-		prefix      = flag.String("prefix", "guardgo", "GuardGo prefix")
+		prefix      = flag.String("prefix", "github.com/Zhaba1337228/GuardGo", "GuardGo prefix")
 		interval    = flag.Duration("interval", 2*time.Second, "Refresh interval")
 		topN        = flag.Int("top", 10, "Top risk entities count")
 		rulesetPath = flag.String("ruleset", "", "Optional ruleset path for DFA stats")
@@ -39,7 +39,7 @@ func main() {
 
 	for {
 		if err := drawDashboard(ctx, rdb, *prefix, *topN, *rulesetPath); err != nil {
-			fmt.Fprintf(os.Stderr, "guardgo-cli: %v\n", err)
+			fmt.Fprintf(os.Stderr, "github.com/Zhaba1337228/GuardGo-cli: %v\n", err)
 		}
 		time.Sleep(*interval)
 	}

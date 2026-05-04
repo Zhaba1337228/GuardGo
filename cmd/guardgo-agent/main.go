@@ -15,7 +15,7 @@ import (
 func main() {
 	var (
 		redisAddr = flag.String("redis-addr", "127.0.0.1:6379", "Redis address")
-		prefix    = flag.String("prefix", "guardgo", "GuardGo Redis key prefix")
+		prefix    = flag.String("prefix", "github.com/Zhaba1337228/GuardGo", "GuardGo Redis key prefix")
 		listen    = flag.String("listen", ":9090", "HTTP listen address")
 		interval  = flag.Duration("interval", 15*time.Second, "Refresh interval")
 	)
@@ -30,16 +30,16 @@ func main() {
 		defer ticker.Stop()
 		for {
 			if err := collector.Refresh(context.Background(), rdb); err != nil {
-				log.Printf("guardgo-agent refresh failed: %v", err)
+				log.Printf("github.com/Zhaba1337228/GuardGo-agent refresh failed: %v", err)
 			}
 			<-ticker.C
 		}
 	}()
 
 	http.Handle("/metrics", promhttp.Handler())
-	log.Printf("guardgo-agent serving metrics on %s/metrics", *listen)
+	log.Printf("github.com/Zhaba1337228/GuardGo-agent serving metrics on %s/metrics", *listen)
 	if err := http.ListenAndServe(*listen, nil); err != nil {
-		log.Fatalf("guardgo-agent server error: %v", err)
+		log.Fatalf("github.com/Zhaba1337228/GuardGo-agent server error: %v", err)
 	}
 }
 
@@ -57,23 +57,23 @@ func newCollector(prefix string) *collector {
 	return &collector{
 		prefix: prefix,
 		redisUp: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "guardgo_agent_redis_up",
+			Name: "github.com/Zhaba1337228/GuardGo_agent_redis_up",
 			Help: "Redis connectivity status (1 up, 0 down)",
 		}),
 		blacklistKeys: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "guardgo_agent_blacklist_keys_total",
+			Name: "github.com/Zhaba1337228/GuardGo_agent_blacklist_keys_total",
 			Help: "Total number of blacklist keys",
 		}),
 		rateLimitKeys: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "guardgo_agent_rate_limit_keys_total",
+			Name: "github.com/Zhaba1337228/GuardGo_agent_rate_limit_keys_total",
 			Help: "Total number of rate-limit keys",
 		}),
 		threatKeys: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "guardgo_agent_threat_keys_total",
+			Name: "github.com/Zhaba1337228/GuardGo_agent_threat_keys_total",
 			Help: "Total number of threat keys",
 		}),
 		blacklistedMembers: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "guardgo_agent_blacklisted_members_total",
+			Name: "github.com/Zhaba1337228/GuardGo_agent_blacklisted_members_total",
 			Help: "Total number of members across blacklist keys",
 		}),
 	}

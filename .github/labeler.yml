@@ -1,0 +1,75 @@
+"area/engine":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "engine*.go"
+          - "decision.go"
+          - "rule.go"
+          - "ruleset.go"
+          - "behavior_tracker.go"
+          - "self_healing.go"
+
+"area/middleware":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "middleware_http.go"
+          - "frameworks.go"
+          - "adapters/**"
+
+"area/internal":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "internal/**"
+
+"area/pkg":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "pkg/**"
+
+"area/rules":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "rules/**"
+
+"area/cmd":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "cmd/**"
+
+"area/observability":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "metrics.go"
+          - "tracing.go"
+          - "stats.go"
+
+"area/tests":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "tests/**"
+          - "**/*_test.go"
+
+"area/examples":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "examples/**"
+
+"area/docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "**/*.md"
+
+"area/ci":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+          - ".golangci.yml"
+          - ".editorconfig"
+          - "Makefile"
+          - "scripts/**"
+
+"area/deps":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "go.mod"
+          - "go.sum"

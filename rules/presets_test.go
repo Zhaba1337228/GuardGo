@@ -3,7 +3,7 @@ package rules
 import (
 	"testing"
 
-	"guardgo"
+	"github.com/Zhaba1337228/GuardGo"
 )
 
 func TestDefaultSecurityPresets(t *testing.T) {

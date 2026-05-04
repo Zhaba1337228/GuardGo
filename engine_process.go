@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
-	"guardgo/internal/redislua"
+	"github.com/Zhaba1337228/GuardGo/internal/redislua"
 )
 
 // Check performs critical-path checks:

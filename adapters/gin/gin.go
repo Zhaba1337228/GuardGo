@@ -1,7 +1,7 @@
 package gin
 
 import (
-	"guardgo"
+	"github.com/Zhaba1337228/GuardGo"
 
 	"github.com/gin-gonic/gin"
 )

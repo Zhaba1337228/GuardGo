@@ -9,12 +9,12 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"guardgo/pkg/dfa"
+	"github.com/Zhaba1337228/GuardGo/pkg/dfa"
 
 	"gopkg.in/yaml.v3"
 )
 
-var ErrRulesetPathEmpty = errors.New("guardgo: ruleset path is empty")
+var ErrRulesetPathEmpty = errors.New("github.com/Zhaba1337228/GuardGo: ruleset path is empty")
 
 type MatchTarget string
 

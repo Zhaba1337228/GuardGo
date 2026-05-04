@@ -3,7 +3,7 @@ package integration_test
 import (
 	"testing"
 
-	"guardgo"
+	"github.com/Zhaba1337228/GuardGo"
 )
 
 func TestDefaultConfigProvidesReadyRedisClient(t *testing.T) {

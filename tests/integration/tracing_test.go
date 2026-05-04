@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"guardgo"
+	"github.com/Zhaba1337228/GuardGo"
 
 	miniredis "github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -29,7 +29,7 @@ func TestTracingCreatesSpanWithDecisionAttributes(t *testing.T) {
 		Window:      time.Second,
 		Tracing: guardgo.TracingConfig{
 			Enabled: true,
-			Tracer:  tp.Tracer("guardgo-tests"),
+			Tracer:  tp.Tracer("github.com/Zhaba1337228/GuardGo-tests"),
 		},
 	})
 	if err != nil {
@@ -46,13 +46,13 @@ func TestTracingCreatesSpanWithDecisionAttributes(t *testing.T) {
 		t.Fatalf("expected at least one span")
 	}
 	span := spans[len(spans)-1]
-	if span.Name() != "guardgo.process" {
+	if span.Name() != "github.com/Zhaba1337228/GuardGo.process" {
 		t.Fatalf("unexpected span name: %s", span.Name())
 	}
 
 	attrs := attributesToMap(span.Attributes())
-	if attrs["guardgo.reason"] != "allowed" {
-		t.Fatalf("expected guardgo.reason=allowed, got %q", attrs["guardgo.reason"])
+	if attrs["github.com/Zhaba1337228/GuardGo.reason"] != "allowed" {
+		t.Fatalf("expected guardgo.reason=allowed, got %q", attrs["github.com/Zhaba1337228/GuardGo.reason"])
 	}
 	if attrs["http.path"] != "/trace" {
 		t.Fatalf("expected http.path=/trace, got %q", attrs["http.path"])

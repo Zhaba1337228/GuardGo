@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"guardgo/internal/redislua"
+	"github.com/Zhaba1337228/GuardGo/internal/redislua"
 )
 
 func (e *Engine) applyReputationScore(ctx context.Context, s *requestSnapshot, score float64) (action int64, banTTL time.Duration, attempts int64, err error) {

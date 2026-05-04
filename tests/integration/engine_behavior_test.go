@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"guardgo"
-	"guardgo/rules"
+	"github.com/Zhaba1337228/GuardGo"
+	"github.com/Zhaba1337228/GuardGo/rules"
 
 	miniredis "github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -96,10 +96,10 @@ func TestEngineBehavior(t *testing.T) {
 		req.RemoteAddr = "10.2.2.2:5555"
 		ctx := context.Background()
 
-		if _, err := mr.SAdd("guardgo:bl:10.2.2.2", "1"); err != nil {
+		if _, err := mr.SAdd("github.com/Zhaba1337228/GuardGo:bl:10.2.2.2", "1"); err != nil {
 			t.Fatal(err)
 		}
-		mr.SetTTL("guardgo:bl:10.2.2.2", time.Minute)
+		mr.SetTTL("github.com/Zhaba1337228/GuardGo:bl:10.2.2.2", time.Minute)
 
 		assertCheck(t, engine, ctx, req, false, guardgo.ReasonBlacklisted)
 		assertCheck(t, engine, ctx, req, false, guardgo.ReasonBlacklisted)

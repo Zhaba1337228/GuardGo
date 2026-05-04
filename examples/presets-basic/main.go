@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"guardgo"
-	"guardgo/rules"
+	"github.com/Zhaba1337228/GuardGo"
+	"github.com/Zhaba1337228/GuardGo/rules"
 )
 
 func main() {

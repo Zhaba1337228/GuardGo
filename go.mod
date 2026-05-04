@@ -1,4 +1,4 @@
-module guardgo
+module github.com/Zhaba1337228/GuardGo
 
 go 1.25.4
 

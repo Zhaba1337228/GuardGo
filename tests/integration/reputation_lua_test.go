@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"guardgo/internal/redislua"
+	"github.com/Zhaba1337228/GuardGo/internal/redislua"
 
 	miniredis "github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -16,10 +16,10 @@ func TestReputationLuaDynamicBackoff(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	ctx := context.Background()
 
-	repKey := "guardgo:rep"
-	penaltyKey := "guardgo:pbox:1.1.1.1"
-	blKey := "guardgo:bl:1.1.1.1"
-	attemptKey := "guardgo:ban_attempts:1.1.1.1"
+	repKey := "github.com/Zhaba1337228/GuardGo:rep"
+	penaltyKey := "github.com/Zhaba1337228/GuardGo:pbox:1.1.1.1"
+	blKey := "github.com/Zhaba1337228/GuardGo:bl:1.1.1.1"
+	attemptKey := "github.com/Zhaba1337228/GuardGo:ban_attempts:1.1.1.1"
 
 	call := func() int64 {
 		res, err := redislua.ReputationScript.Run(
