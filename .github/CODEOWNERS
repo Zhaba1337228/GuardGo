@@ -1,0 +1,9 @@
+# Default owners for everything in the repo.
+# Replace @maintainer with the actual GitHub handle(s).
+*                                       @maintainer
+
+# Critical security surfaces require explicit review.
+/internal/redislua/                     @maintainer
+/engine.go                              @maintainer
+/SECURITY.md                            @maintainer
+/.github/                               @maintainer

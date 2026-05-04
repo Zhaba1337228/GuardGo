@@ -1,0 +1,72 @@
+name: Bug report
+description: Report a defect in GuardGo.
+title: "bug: <short summary>"
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report.
+        Please fill out the sections below; missing context delays triage.
+  - type: input
+    id: version
+    attributes:
+      label: GuardGo version / commit
+      placeholder: "v0.1.0 or commit SHA"
+    validations:
+      required: true
+  - type: input
+    id: go_version
+    attributes:
+      label: Go version
+      placeholder: "go1.25.4"
+    validations:
+      required: true
+  - type: input
+    id: redis_version
+    attributes:
+      label: Redis version
+      placeholder: "7.2.5 / Valkey 7.2 / miniredis"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS / Arch
+      placeholder: "linux/amd64, darwin/arm64, windows/amd64"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: Smallest possible Go snippet or test case that triggers the bug.
+      render: go
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / stack trace
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I searched existing issues and could not find a duplicate.
+          required: true
+        - label: I am running a supported Go version (1.25+).
+          required: true

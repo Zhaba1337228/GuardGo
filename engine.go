@@ -1,22 +1,19 @@
 package guardgo
 
 import (
-	"context"
 	"net"
 	"net/http"
-	"net/url"
 	"runtime"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
-	"go.opentelemetry.io/otel/trace"
 	"guardgo/internal/blacklist"
 	"guardgo/internal/redislua"
 	"guardgo/pkg/bloom"
 )
 
+// Engine is the request-decision core. It is safe for concurrent use after
+// NewEngine returns and until Close is called.
 type Engine struct {
 	cfg MiddlewareConfig
 
@@ -39,11 +36,8 @@ type Engine struct {
 	hotReloadStop func()
 }
 
-// Config returns effective engine configuration with defaults applied.
-func (e *Engine) Config() MiddlewareConfig {
-	return e.cfg
-}
-
+// requestSnapshot is a pooled, header-stable copy of the parts of an
+// *http.Request that the async pipeline needs after the request returns.
 type requestSnapshot struct {
 	ip     string
 	key    string
@@ -57,6 +51,16 @@ type requestSnapshot struct {
 	ts     time.Time
 }
 
+// Reference imports kept here so split files don't drift if a sibling file
+// stops using a particular package.
+var (
+	_ = redislua.CriticalPathScript
+	_ = bloom.New
+)
+
+// NewEngine constructs an Engine, applying defaults and starting background
+// workers if any reactive subsystem (rules, reputation, behavior, ruleset
+// reload) is configured.
 func NewEngine(cfg MiddlewareConfig) (*Engine, error) {
 	cfg = cfg.withDefaults()
 	if cfg.Redis == nil {
@@ -124,6 +128,8 @@ func NewEngine(cfg MiddlewareConfig) (*Engine, error) {
 	return e, nil
 }
 
+// Close stops background workers and releases attached resources.
+// Safe to call multiple times.
 func (e *Engine) Close() {
 	if e.hotReloadStop != nil {
 		e.hotReloadStop()
@@ -135,372 +141,13 @@ func (e *Engine) Close() {
 	e.bgWg.Wait()
 }
 
-func (e *Engine) startBackground(workers int) {
-	for range workers {
-		e.bgWg.Add(1)
-		go func() {
-			defer e.bgWg.Done()
-			e.bgWorker()
-		}()
-	}
-}
-
-func (e *Engine) bgWorker() {
-	for {
-		select {
-		case <-e.bgStop:
-			return
-		case snap := <-e.analysisCh:
-			if snap == nil {
-				continue
-			}
-			e.processSnapshot(snap)
-			e.putSnapshot(snap)
-		}
-	}
-}
-
-func (e *Engine) processSnapshot(s *requestSnapshot) {
-	r := &http.Request{
-		Method: s.method,
-		Host:   s.host,
-		URL: &url.URL{
-			Path:     s.path,
-			RawQuery: s.rawQ,
-		},
-		Header: s.hdr,
-	}
-	score := 0.0
-	for _, rule := range e.cfg.Rules {
-		score += float64(rule.Evaluate(r))
-	}
-	for _, evaluator := range e.cfg.Evaluators {
-		score += evaluator.CalculateScore(r)
-	}
-	if e.compiled != nil {
-		score += float64(e.evaluateRuleset(r))
-	}
-	if e.behavior != nil {
-		score += float64(e.behavior.observe(s.ip, r, s.ts))
-	}
-
-	if score <= 0 {
-		return
-	}
-	e.recordStat("risk_score_add_total", score, map[string]string{"source": "pipeline"})
-
-	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
-	defer cancel()
-
-	ip := s.ip
-	if ip == "" {
-		return
-	}
-	if e.cfg.Reputation.Enabled {
-		action, banTTL, attempts, err := e.applyReputationScore(ctx, s, score)
-		if err != nil {
-			e.cfg.Metrics.IncRedisErrors()
-			e.recordStat("redis_errors_total", 1, map[string]string{"op": "reputation_lua"})
-			if e.cfg.OnError != nil {
-				e.cfg.OnError(err)
-			}
-		} else {
-			switch action {
-			case 1:
-				_ = e.setPenalty(ctx, ip, e.cfg.Reputation.PenaltyTTL)
-			case 2:
-				e.cache.Blacklist(ip, time.Now().Add(banTTL))
-				if e.bf != nil {
-					e.bf.Add(ip)
-				}
-				e.recordStat("reputation_blacklist_total", 1, map[string]string{
-					"attempt": strconv.FormatInt(attempts, 10),
-				})
-			}
-		}
-	} else if score >= float64(e.cfg.Behavioral.ScoreThreshold) {
-		_ = e.setPenalty(ctx, ip, e.cfg.Behavioral.PenaltyTTL)
-	}
-
-	if e.cfg.AdaptiveBan.Enabled {
-		prefix := e.cfg.Prefix
-		threatKey := prefix + ":threat:" + ip
-		pipe := e.cfg.Redis.Pipeline()
-		incr := pipe.Incr(ctx, threatKey)
-		pipe.PExpire(ctx, threatKey, e.cfg.AdaptiveBan.ThreatKeyWindow)
-		_, err := pipe.Exec(ctx)
-		if err != nil {
-			e.cfg.Metrics.IncRedisErrors()
-			e.recordStat("redis_errors_total", 1, map[string]string{"op": "adaptive_ban_increment"})
-			if e.cfg.OnError != nil {
-				e.cfg.OnError(err)
-			}
-			return
-		}
-		if incr.Val() >= e.cfg.AdaptiveBan.ThreatCountThreshold {
-			_ = e.banIP(ctx, ip, e.cfg.AdaptiveBan.BanTTL)
-		}
-	}
-}
-
-func (e *Engine) getSnapshot() *requestSnapshot {
-	s := e.reqPool.Get().(*requestSnapshot)
-	*s = requestSnapshot{}
-	return s
-}
-
-func (e *Engine) putSnapshot(s *requestSnapshot) {
-	if s.hdr != nil {
-		for k := range s.hdr {
-			delete(s.hdr, k)
-		}
-	}
-	e.reqPool.Put(s)
-}
-
-func (e *Engine) snapshotFromRequest(r *http.Request, ip, key string, now time.Time) *requestSnapshot {
-	s := e.getSnapshot()
-	s.ip = ip
-	s.key = key
-	s.method = r.Method
-	s.host = r.Host
-	if r.URL != nil {
-		s.path = r.URL.Path
-		s.rawQ = r.URL.RawQuery
-	}
-	s.ua = r.Header.Get("User-Agent")
-	s.lang = r.Header.Get("Accept-Language")
-
-	if len(e.cfg.AdaptiveBan.CaptureHeaders) > 0 {
-		if s.hdr == nil {
-			s.hdr = make(http.Header, len(e.cfg.AdaptiveBan.CaptureHeaders))
-		}
-		for _, name := range e.cfg.AdaptiveBan.CaptureHeaders {
-			if v := r.Header.Values(name); len(v) > 0 {
-				// Copy to avoid aliasing caller's slice.
-				dst := make([]string, len(v))
-				copy(dst, v)
-				s.hdr[name] = dst
-			}
-		}
-	}
-
-	s.ts = now
-	return s
-}
-
-func defaultIPFunc(r *http.Request) string {
-	ra := r.RemoteAddr
-	if ra == "" {
-		return ""
-	}
-	host, _, err := net.SplitHostPort(ra)
-	if err == nil {
-		return host
-	}
-	// Might already be host-only.
-	return ra
-}
-
-func (e *Engine) redisKeysFor(ip, key string) (blKey, counterKey string) {
-	p := e.cfg.Prefix
-	blKey = p + ":bl:" + ip
-	counterKey = p + ":rl:" + key
-	return blKey, counterKey
+// Config returns effective engine configuration with defaults applied.
+func (e *Engine) Config() MiddlewareConfig {
+	return e.cfg
 }
 
 func (e *Engine) shouldEnqueueAnalysis() bool {
 	return e.analysisCh != nil
-}
-
-// Check performs critical-path checks:
-// - local blacklist cache
-// - Redis Lua (blacklist + rate-limit counter)
-//
-// It returns allowed, reason code and current counter value.
-func (e *Engine) Check(ctx context.Context, r *http.Request) (allowed bool, reason Reason, counter int64) {
-	d := e.Process(ctx, r)
-	return d.Allowed, d.Reason, d.Counter
-}
-
-// Process runs request through guard engine and returns a full decision payload.
-func (e *Engine) Process(ctx context.Context, r *http.Request) Decision {
-	now := time.Now()
-	ip := e.cfg.IPFunc(r)
-	key := e.cfg.KeyFunc(r)
-	if key == "" {
-		key = ip
-	}
-	ctx, span := e.startProcessSpan(ctx, r, ip, key)
-	defer span.End()
-
-	effectiveLimit := e.cfg.MaxRequests
-	if e.sh != nil {
-		effectiveLimit = e.sh.effectiveLimit(ip, e.cfg.MaxRequests, now)
-	}
-	redisDurationMs := 0.0
-
-	if ip != "" && e.cache.IsBlacklisted(ip, now) {
-		e.cfg.Metrics.IncBlacklisted()
-		e.recordRequestStat("blocked", "cache_blacklist")
-		d := newDecision(false, ReasonBlacklisted, 0, effectiveLimit, now, e.cfg.Window)
-		e.finishDecision(now, span, d, redisDurationMs)
-		return d
-	}
-	if ip != "" {
-		inPenalty, penaltyTTL := e.isInPenalty(ctx, ip, now)
-		if inPenalty {
-			if !e.passesPenaltyChecks(r) {
-				banTTL := e.cfg.Behavioral.PenaltyBanTTL
-				if e.cfg.Reputation.Enabled {
-					banTTL = e.cfg.Reputation.BanLevel3
-				}
-				_ = e.banIP(ctx, ip, banTTL)
-				e.recordRequestStat("blocked", "penalty_forbidden")
-				d := newDecisionWithTTL(false, ReasonPenaltyForbidden, 0, 1, now, int64(banTTL/time.Millisecond), e.cfg.Window)
-				d.StatusCode = http.StatusForbidden
-				e.finishDecision(now, span, d, redisDurationMs)
-				return d
-			}
-			if effectiveLimit > 1 {
-				effectiveLimit = 1
-			}
-			if penaltyTTL > 0 {
-				e.recordStat("penalty_box_hits_total", 1, map[string]string{"mode": "strict"})
-			}
-		}
-	}
-	if ip != "" && e.bf != nil && !e.bf.Test(ip) {
-		e.cfg.Metrics.IncAllowed()
-		e.recordRequestStat("allowed", "bloom_negative")
-		if e.shouldEnqueueAnalysis() {
-			e.tryEnqueue(r, ip, key, now)
-		}
-		d := newDecision(true, ReasonAllowed, 0, effectiveLimit, now, e.cfg.Window)
-		e.finishDecision(now, span, d, redisDurationMs)
-		return d
-	}
-
-	blKey, counterKey := e.redisKeysFor(ip, key)
-
-	start := time.Now()
-	res, err := redislua.CriticalPathScript.Run(ctx, e.cfg.Redis, []string{blKey, counterKey}, e.cfg.Window.Milliseconds(), effectiveLimit).Result()
-	redisDuration := time.Since(start)
-	redisDurationMs = float64(redisDuration.Microseconds()) / 1000.0
-	e.cfg.Metrics.ObserveLuaLatency(redisDuration)
-	if err != nil {
-		e.cfg.Metrics.IncRedisErrors()
-		e.recordStat("redis_errors_total", 1, map[string]string{"op": "critical_path_lua"})
-		if e.cfg.OnError != nil {
-			e.cfg.OnError(err)
-		}
-		if e.cfg.FailOpen {
-			e.cfg.Metrics.IncAllowed()
-			e.recordRequestStat("allowed", "fail_open")
-			if e.shouldEnqueueAnalysis() {
-				e.tryEnqueue(r, ip, key, now)
-			}
-			d := newDecision(true, ReasonFailOpen, 0, effectiveLimit, now, e.cfg.Window)
-			e.finishDecision(now, span, d, redisDurationMs)
-			return d
-		}
-		e.recordRequestStat("blocked", "redis_error")
-		d := newDecision(false, ReasonRedisError, 0, effectiveLimit, now, e.cfg.Window)
-		e.finishDecision(now, span, d, redisDurationMs)
-		return d
-	}
-
-	code, counter, ttl := parseLuaResult(res)
-	switch code {
-	case 2:
-		e.cfg.Metrics.IncBlacklisted()
-		e.recordRequestStat("blocked", "redis_blacklist")
-		// Cache blacklisted for a short period to avoid hammering Redis.
-		e.cache.Blacklist(ip, now.Add(2*time.Second))
-		if ip != "" && e.bf != nil {
-			e.bf.Add(ip)
-		}
-		d := newDecisionWithTTL(false, ReasonBlacklisted, counter, effectiveLimit, now, ttl, e.cfg.Window)
-		e.finishDecision(now, span, d, redisDurationMs)
-		return d
-	case 1:
-		e.cfg.Metrics.IncRateLimited()
-		e.recordRequestStat("blocked", "rate_limit")
-		d := newDecisionWithTTL(false, ReasonRateLimited, counter, effectiveLimit, now, ttl, e.cfg.Window)
-		e.finishDecision(now, span, d, redisDurationMs)
-		return d
-	default:
-		e.cfg.Metrics.IncAllowed()
-		e.recordRequestStat("allowed", "lua_allow")
-		if e.shouldEnqueueAnalysis() {
-			e.tryEnqueue(r, ip, key, now)
-		}
-		d := newDecisionWithTTL(true, ReasonAllowed, counter, effectiveLimit, now, ttl, e.cfg.Window)
-		e.finishDecision(now, span, d, redisDurationMs)
-		return d
-	}
-}
-
-func (e *Engine) finishDecision(now time.Time, span trace.Span, d Decision, redisDurationMs float64) {
-	if e.sh != nil {
-		e.sh.observe(d, now)
-	}
-	e.annotateDecision(span, d, redisDurationMs)
-}
-
-func (e *Engine) tryEnqueue(r *http.Request, ip, key string, now time.Time) {
-	snap := e.snapshotFromRequest(r, ip, key, now)
-	select {
-	case e.analysisCh <- snap:
-	default:
-		// Drop under pressure; async analysis is best-effort.
-		e.putSnapshot(snap)
-	}
-}
-
-func parseLuaResult(v any) (code int64, counter int64, ttlMillis int64) {
-	// go-redis returns []interface{} with int64 values.
-	arr, ok := v.([]any)
-	if !ok || len(arr) < 2 {
-		return 0, 0, 0
-	}
-	if c, ok := arr[0].(int64); ok {
-		code = c
-	}
-	if cur, ok := arr[1].(int64); ok {
-		counter = cur
-	}
-	if len(arr) > 2 {
-		if ttl, ok := arr[2].(int64); ok {
-			ttlMillis = ttl
-		}
-	}
-	return code, counter, ttlMillis
-}
-
-func (e *Engine) banIP(ctx context.Context, ip string, ttl time.Duration) error {
-	if ip == "" {
-		return nil
-	}
-	blKey, _ := e.redisKeysFor(ip, ip)
-
-	pipe := e.cfg.Redis.Pipeline()
-	pipe.SAdd(ctx, blKey, "1")
-	pipe.PExpire(ctx, blKey, ttl)
-	_, err := pipe.Exec(ctx)
-	if err != nil {
-		e.cfg.Metrics.IncRedisErrors()
-		e.recordStat("redis_errors_total", 1, map[string]string{"op": "ban_ip"})
-		if e.cfg.OnError != nil {
-			e.cfg.OnError(err)
-		}
-		return err
-	}
-	e.cache.Blacklist(ip, time.Now().Add(ttl))
-	if e.bf != nil {
-		e.bf.Add(ip)
-	}
-	return nil
 }
 
 func (e *Engine) recordRequestStat(status, source string) {
@@ -514,265 +161,14 @@ func (e *Engine) recordStat(name string, value float64, labels map[string]string
 	e.cfg.Stats.Record(name, value, labels)
 }
 
-// Reason describes the decision made by Engine.Check.
-type Reason int
-
-const (
-	ReasonAllowed Reason = iota
-	ReasonRateLimited
-	ReasonBlacklisted
-	ReasonRedisError
-	ReasonFailOpen
-	ReasonPenaltyForbidden
-)
-
-func (r Reason) String() string {
-	switch r {
-	case ReasonAllowed:
-		return "allowed"
-	case ReasonRateLimited:
-		return "rate_limited"
-	case ReasonBlacklisted:
-		return "blacklisted"
-	case ReasonRedisError:
-		return "redis_error"
-	case ReasonFailOpen:
-		return "fail_open"
-	case ReasonPenaltyForbidden:
-		return "penalty_forbidden"
-	default:
-		return "unknown"
-	}
-}
-
-// Decision is a normalized engine output used by all middleware adapters.
-type Decision struct {
-	Allowed    bool
-	Reason     Reason
-	Counter    int64
-	Limit      int
-	Remaining  int
-	ResetAt    time.Time
-	StatusCode int
-}
-
-func newDecision(allowed bool, reason Reason, counter int64, limit int, now time.Time, fallbackWindow time.Duration) Decision {
-	return newDecisionWithTTL(allowed, reason, counter, limit, now, int64(fallbackWindow/time.Millisecond), fallbackWindow)
-}
-
-func newDecisionWithTTL(
-	allowed bool,
-	reason Reason,
-	counter int64,
-	limit int,
-	now time.Time,
-	ttlMillis int64,
-	fallbackWindow time.Duration,
-) Decision {
-	if ttlMillis <= 0 {
-		ttlMillis = int64(fallbackWindow / time.Millisecond)
-	}
-	remaining := limit - int(counter)
-	if remaining < 0 {
-		remaining = 0
-	}
-	return Decision{
-		Allowed:   allowed,
-		Reason:    reason,
-		Counter:   counter,
-		Limit:     limit,
-		Remaining: remaining,
-		ResetAt:   now.Add(time.Duration(ttlMillis) * time.Millisecond),
-	}
-}
-
-func (e *Engine) evaluateRuleset(r *http.Request) int64 {
-	compiled := e.compiled
-	if e.ruleset != nil {
-		compiled = e.ruleset.Current()
-		e.compiled = compiled
-	}
-	if compiled == nil {
-		return 0
-	}
-	var score int64
-	if compiled.Any != nil {
-		for _, match := range compiled.Any.FindAll(requestAnyText(r)) {
-			score += match.Weight
-		}
-	}
-	if compiled.Query != nil && r.URL != nil {
-		for _, match := range compiled.Query.FindAll(r.URL.RawQuery) {
-			score += match.Weight
-		}
-	}
-	if compiled.Path != nil && r.URL != nil {
-		for _, match := range compiled.Path.FindAll(r.URL.Path) {
-			score += match.Weight
-		}
-	}
-	if compiled.Headers != nil {
-		for _, match := range compiled.Headers.FindAll(headersText(r.Header)) {
-			score += match.Weight
-		}
-	}
-	return score
-}
-
-func requestAnyText(r *http.Request) string {
-	if r == nil {
+func defaultIPFunc(r *http.Request) string {
+	ra := r.RemoteAddr
+	if ra == "" {
 		return ""
 	}
-	var b strings.Builder
-	b.Grow(256)
-	b.WriteString(r.Method)
-	b.WriteByte(' ')
-	if r.URL != nil {
-		b.WriteString(r.URL.Path)
-		b.WriteByte('?')
-		b.WriteString(r.URL.RawQuery)
+	host, _, err := net.SplitHostPort(ra)
+	if err == nil {
+		return host
 	}
-	b.WriteByte(' ')
-	b.WriteString(headersText(r.Header))
-	return b.String()
-}
-
-func headersText(h http.Header) string {
-	if len(h) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	for key, values := range h {
-		b.WriteString(key)
-		b.WriteByte(':')
-		for _, value := range values {
-			b.WriteString(value)
-			b.WriteByte(';')
-		}
-		b.WriteByte('\n')
-	}
-	return b.String()
-}
-
-func (e *Engine) penaltyKey(ip string) string {
-	return e.cfg.Prefix + ":pbox:" + ip
-}
-
-func (e *Engine) isInPenalty(ctx context.Context, ip string, now time.Time) (bool, time.Duration) {
-	if e.pbox.IsBlacklisted(ip, now) {
-		if e.cfg.Reputation.Enabled {
-			return true, e.cfg.Reputation.PenaltyTTL
-		}
-		return true, e.cfg.Behavioral.PenaltyTTL
-	}
-	ttl, err := e.cfg.Redis.PTTL(ctx, e.penaltyKey(ip)).Result()
-	if err != nil || ttl <= 0 {
-		return false, 0
-	}
-	e.pbox.Blacklist(ip, now.Add(ttl))
-	return true, ttl
-}
-
-func (e *Engine) setPenalty(ctx context.Context, ip string, ttl time.Duration) error {
-	if ip == "" {
-		return nil
-	}
-	key := e.penaltyKey(ip)
-	pipe := e.cfg.Redis.Pipeline()
-	pipe.Set(ctx, key, "1", ttl)
-	_, err := pipe.Exec(ctx)
-	if err != nil {
-		e.recordStat("redis_errors_total", 1, map[string]string{"op": "set_penalty"})
-		return err
-	}
-	e.pbox.Blacklist(ip, time.Now().Add(ttl))
-	e.recordStat("penalty_box_entries_total", 1, map[string]string{"reason": "risk_threshold"})
-	return nil
-}
-
-func (e *Engine) applyReputationScore(ctx context.Context, s *requestSnapshot, score float64) (action int64, banTTL time.Duration, attempts int64, err error) {
-	repKey := e.cfg.Prefix + ":rep"
-	field := reputationField(s)
-	penaltyKey := e.penaltyKey(s.ip)
-	blKey, _ := e.redisKeysFor(s.ip, s.ip)
-	attemptKey := e.cfg.Prefix + ":ban_attempts:" + s.ip
-
-	res, runErr := redislua.ReputationScript.Run(
-		ctx,
-		e.cfg.Redis,
-		[]string{repKey, penaltyKey, blKey, attemptKey},
-		field,
-		score,
-		e.cfg.Reputation.ScoreWindow.Milliseconds(),
-		e.cfg.Reputation.WarningLevel,
-		e.cfg.Reputation.Threshold,
-		e.cfg.Reputation.PenaltyTTL.Milliseconds(),
-		e.cfg.Reputation.BackoffWindow.Milliseconds(),
-		e.cfg.Reputation.BanLevel1.Milliseconds(),
-		e.cfg.Reputation.BanLevel2.Milliseconds(),
-		e.cfg.Reputation.BanLevel3.Milliseconds(),
-	).Result()
-	if runErr != nil {
-		return 0, 0, 0, runErr
-	}
-
-	arr, ok := res.([]any)
-	if !ok || len(arr) < 4 {
-		return 0, 0, 0, nil
-	}
-	if v, ok := arr[1].(int64); ok {
-		action = v
-	}
-	if v, ok := arr[2].(int64); ok {
-		banTTL = time.Duration(v) * time.Millisecond
-	}
-	if v, ok := arr[3].(int64); ok {
-		attempts = v
-	}
-	return action, banTTL, attempts, nil
-}
-
-func reputationField(s *requestSnapshot) string {
-	fp := fingerprint(s.ip, s.ua, s.lang)
-	return s.ip + "|" + fp
-}
-
-func fingerprint(ip string, ua string, lang string) string {
-	raw := strings.ToLower(strings.TrimSpace(ip)) + "|" +
-		strings.ToLower(strings.TrimSpace(ua)) + "|" +
-		strings.ToLower(strings.TrimSpace(lang))
-	h := hash64(raw)
-	return strconv.FormatUint(h, 16)
-}
-
-func (e *Engine) passesPenaltyChecks(r *http.Request) bool {
-	if r == nil {
-		return false
-	}
-	if e.cfg.Behavioral.RequireUserAgent && strings.TrimSpace(r.Header.Get("User-Agent")) == "" {
-		return false
-	}
-	if e.cfg.Behavioral.RequireReferer && strings.TrimSpace(r.Header.Get("Referer")) == "" {
-		return false
-	}
-	return true
-}
-
-func (d Decision) StatusCodeOr(defaultCode int) int {
-	if d.StatusCode != 0 {
-		return d.StatusCode
-	}
-	if defaultCode != 0 {
-		return defaultCode
-	}
-	return http.StatusTooManyRequests
-}
-
-func (d Decision) Headers() map[string]string {
-	return map[string]string{
-		"X-RateLimit-Limit":     strconv.Itoa(d.Limit),
-		"X-RateLimit-Remaining": strconv.Itoa(d.Remaining),
-		"X-RateLimit-Reset":     strconv.FormatInt(d.ResetAt.Unix(), 10),
-		"X-RateLimit-Reset-At":  d.ResetAt.UTC().Format(time.RFC3339),
-	}
+	return ra
 }

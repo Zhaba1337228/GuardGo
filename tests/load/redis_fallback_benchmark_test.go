@@ -26,7 +26,7 @@ func BenchmarkRedisFallbackRealRedis(b *testing.B) {
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		b.Fatalf("redis ping failed: %v", err)
 	}
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 
 	engine, err := guardgo.NewEngine(guardgo.MiddlewareConfig{
 		Redis:       rdb,
