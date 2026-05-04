@@ -1,0 +1,42 @@
+# 2026/05/04 23:52:17.605971 [TestProperty_Fingerprint_NormalizationStable] [rapid] draw ip: "0.0.0.0"
+# 2026/05/04 23:52:17.605971 [TestProperty_Fingerprint_NormalizationStable] [rapid] draw ua: "µ"
+# 2026/05/04 23:52:17.605971 [TestProperty_Fingerprint_NormalizationStable] [rapid] draw lang: ""
+# 2026/05/04 23:52:17.605971 [TestProperty_Fingerprint_NormalizationStable] fingerprint not normalization-stable:
+# base="748a660362f4d60e"
+# mut ="f5e78032a6f9c33"
+# ip="0.0.0.0" ua="µ" lang=""
+# 
+v0.4.8#10594191160479096261
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x5555555555555
+0x15
+0xb6b64d3737e6b
+0x1a
+0x0
+0x0
