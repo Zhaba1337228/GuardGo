@@ -1,0 +1,44 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+.omc/
+.claude/
+# Test / coverage artifacts
+*.test
+*.out
+coverage.txt
+coverage.html
+profile.cov
+cpu.prof
+mem.prof
+*.prof
+
+# Build / vendor
+vendor/
+
+# Editors / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Env / local config
+.env
+.env.local
+*.local.yaml
+*.local.yml
+
+# Logs
+*.log
+
+# OMC / Claude artifacts
+.omc/
+.claude/
