@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Zhaba1337228/GuardGo"
+	guardgo "github.com/Zhaba1337228/GuardGo"
 
 	miniredis "github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"

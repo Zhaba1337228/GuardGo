@@ -11,10 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Zhaba1337228/GuardGo"
 	"github.com/redis/go-redis/v9"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	guardgo "github.com/Zhaba1337228/GuardGo"
 )
 
 func TestRedisChaosFailOpenSurvivesContainerKill(t *testing.T) {

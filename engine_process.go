@@ -5,8 +5,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Zhaba1337228/GuardGo/internal/redislua"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/Zhaba1337228/GuardGo/internal/redislua"
 )
 
 // Check performs critical-path checks:
@@ -40,7 +41,7 @@ func (e *Engine) Process(ctx context.Context, r *http.Request) Decision {
 	if ip != "" && e.cache.IsBlacklisted(ip, now) {
 		e.cfg.Metrics.IncBlacklisted()
 		e.recordRequestStat("blocked", "cache_blacklist")
-		d := newDecision(false, ReasonBlacklisted, 0, effectiveLimit, now, e.cfg.Window)
+		d := newDecision(false, ReasonBlacklisted, effectiveLimit, now, e.cfg.Window)
 		e.finishDecision(now, span, d, redisDurationMs)
 		return d
 	}
@@ -73,7 +74,7 @@ func (e *Engine) Process(ctx context.Context, r *http.Request) Decision {
 		if e.shouldEnqueueAnalysis() {
 			e.tryEnqueue(r, ip, key, now)
 		}
-		d := newDecision(true, ReasonAllowed, 0, effectiveLimit, now, e.cfg.Window)
+		d := newDecision(true, ReasonAllowed, effectiveLimit, now, e.cfg.Window)
 		e.finishDecision(now, span, d, redisDurationMs)
 		return d
 	}
@@ -97,12 +98,12 @@ func (e *Engine) Process(ctx context.Context, r *http.Request) Decision {
 			if e.shouldEnqueueAnalysis() {
 				e.tryEnqueue(r, ip, key, now)
 			}
-			d := newDecision(true, ReasonFailOpen, 0, effectiveLimit, now, e.cfg.Window)
+			d := newDecision(true, ReasonFailOpen, effectiveLimit, now, e.cfg.Window)
 			e.finishDecision(now, span, d, redisDurationMs)
 			return d
 		}
 		e.recordRequestStat("blocked", "redis_error")
-		d := newDecision(false, ReasonRedisError, 0, effectiveLimit, now, e.cfg.Window)
+		d := newDecision(false, ReasonRedisError, effectiveLimit, now, e.cfg.Window)
 		e.finishDecision(now, span, d, redisDurationMs)
 		return d
 	}

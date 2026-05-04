@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Zhaba1337228/GuardGo"
+	guardgo "github.com/Zhaba1337228/GuardGo"
 )
 
 func TestRulesetManagerReload(t *testing.T) {

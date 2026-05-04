@@ -28,14 +28,14 @@ func TestReputationLuaDynamicBackoff(t *testing.T) {
 			[]string{repKey, penaltyKey, blKey, attemptKey},
 			"1.1.1.1|fp",
 			100.0,
-			int64((15 * time.Minute).Milliseconds()),
+			(15 * time.Minute).Milliseconds(),
 			60.0,
 			100.0,
-			int64((30 * time.Minute).Milliseconds()),
-			int64((24 * time.Hour).Milliseconds()),
-			int64((1 * time.Minute).Milliseconds()),
-			int64((10 * time.Minute).Milliseconds()),
-			int64((24 * time.Hour).Milliseconds()),
+			(30 * time.Minute).Milliseconds(),
+			(24 * time.Hour).Milliseconds(),
+			(1 * time.Minute).Milliseconds(),
+			(10 * time.Minute).Milliseconds(),
+			(24 * time.Hour).Milliseconds(),
 		).Result()
 		if err != nil {
 			t.Fatal(err)

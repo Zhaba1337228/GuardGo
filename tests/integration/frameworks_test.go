@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Zhaba1337228/GuardGo"
+	guardgo "github.com/Zhaba1337228/GuardGo"
 
 	miniredis "github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
@@ -112,6 +112,7 @@ func TestFrameworkWrappers(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer resp1.Body.Close()
 		if resp1.StatusCode != http.StatusNoContent {
 			t.Fatalf("expected first fiber request to pass, got %d", resp1.StatusCode)
 		}
@@ -123,6 +124,7 @@ func TestFrameworkWrappers(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer resp2.Body.Close()
 		if resp2.StatusCode != http.StatusTooManyRequests {
 			t.Fatalf("expected second fiber request to be blocked, got %d", resp2.StatusCode)
 		}

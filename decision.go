@@ -48,8 +48,8 @@ type Decision struct {
 	StatusCode int
 }
 
-func newDecision(allowed bool, reason Reason, counter int64, limit int, now time.Time, fallbackWindow time.Duration) Decision {
-	return newDecisionWithTTL(allowed, reason, counter, limit, now, int64(fallbackWindow/time.Millisecond), fallbackWindow)
+func newDecision(allowed bool, reason Reason, limit int, now time.Time, fallbackWindow time.Duration) Decision {
+	return newDecisionWithTTL(allowed, reason, 0, limit, now, int64(fallbackWindow/time.Millisecond), fallbackWindow)
 }
 
 func newDecisionWithTTL(

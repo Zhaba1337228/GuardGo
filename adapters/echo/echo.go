@@ -1,9 +1,7 @@
 package echo
 
 import (
-	"net/http"
-
-	"github.com/Zhaba1337228/GuardGo"
+	guardgo "github.com/Zhaba1337228/GuardGo"
 
 	"github.com/labstack/echo/v4"
 )
@@ -31,7 +29,7 @@ func GuardWithEngine(cfg guardgo.MiddlewareConfig) (echo.MiddlewareFunc, *guardg
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			decision := engine.Process(c.Request().Context(), c.Request())
-			guardgo.ApplyRateLimitHeaders(http.Header(c.Response().Header()), decision)
+			guardgo.ApplyRateLimitHeaders(c.Response().Header(), decision)
 			if !decision.Allowed {
 				return c.NoContent(decision.StatusCodeOr(engine.Config().DenyStatusCode))
 			}

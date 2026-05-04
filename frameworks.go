@@ -28,7 +28,7 @@ func Echo(engine *Engine) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			decision := engine.Process(c.Request().Context(), c.Request())
-			ApplyRateLimitHeaders(http.Header(c.Response().Header()), decision)
+			ApplyRateLimitHeaders(c.Response().Header(), decision)
 			if !decision.Allowed {
 				return c.NoContent(decision.StatusCodeOr(engine.Config().DenyStatusCode))
 			}

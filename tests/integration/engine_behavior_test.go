@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Zhaba1337228/GuardGo"
+	guardgo "github.com/Zhaba1337228/GuardGo"
 	"github.com/Zhaba1337228/GuardGo/rules"
 
 	miniredis "github.com/alicebob/miniredis/v2"

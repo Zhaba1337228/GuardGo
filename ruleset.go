@@ -100,7 +100,7 @@ func (m *RulesetManager) ReloadOnSignal(ctx context.Context, ch <-chan os.Signal
 }
 
 func LoadRulesetFile(path string) (*CompiledRuleset, error) {
-	body, err := os.ReadFile(path)
+	body, err := os.ReadFile(path) // #nosec G304 -- path is operator-controlled config
 	if err != nil {
 		return nil, err
 	}

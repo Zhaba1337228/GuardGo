@@ -4,8 +4,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Zhaba1337228/GuardGo"
 	"github.com/redis/go-redis/v9"
+
+	guardgo "github.com/Zhaba1337228/GuardGo"
 )
 
 func main() {
