@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.0.0 (2026-05-04)
+
+
+### Features
+
+* Add initial implementation of GuardGo engine with Redis integration ([130c362](https://github.com/Zhaba1337228/GuardGo/commit/130c3626453ff98126ba532605c23c3ddc20dcc4))
+* enhance CI workflow with integration tests and improved coverage reporting ([d215e5f](https://github.com/Zhaba1337228/GuardGo/commit/d215e5f57381c15b4e884a499faf3d6e41188890))
+* fix version golang ([b8ad020](https://github.com/Zhaba1337228/GuardGo/commit/b8ad0202070565376aaf3d75b9b98c48a2a87cba))
+* Integrate Codecov for coverage reporting and update import paths to reflect new module name ([9276628](https://github.com/Zhaba1337228/GuardGo/commit/9276628eb5ed6dab527974554a7b55d9fbf96bf3))
+
+
+### Bug Fixes
+
+* reorder import statements for consistency across multiple files ([5aba5ee](https://github.com/Zhaba1337228/GuardGo/commit/5aba5eedae0238ae9265690410bea03381dba1bb))
+
 ## [Unreleased]
 
 ### Added
