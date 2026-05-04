@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0](https://github.com/Zhaba1337228/GuardGo/compare/v1.0.0...v1.1.0) (2026-05-04)
+
+
+### Features
+
+* add fuzz tests and mutation testing documentation; update dependencies ([bbe0fb1](https://github.com/Zhaba1337228/GuardGo/commit/bbe0fb1c8dd7743a7d776df41c4d6753d72e1422))
+
+
+### Bug Fixes
+
+* improve determinism check in hash64 test with detailed failure message ([4a828ca](https://github.com/Zhaba1337228/GuardGo/commit/4a828ca620b4dcb4bc8adbb959f5b3c143bd231f))
+
 ## 1.0.0 (2026-05-04)
 
 
