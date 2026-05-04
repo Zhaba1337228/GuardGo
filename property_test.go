@@ -55,8 +55,10 @@ func TestProperty_Fingerprint_DistinctIPsDifferentResult(t *testing.T) {
 func TestProperty_Hash64_DeterministicAndNonZeroForNonEmpty(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		s := rapid.StringN(1, 64, 256).Draw(t, "s")
-		if hash64(s) != hash64(s) {
-			t.Fatalf("hash64 not deterministic for %q", s)
+		a := hash64(s)
+		b := hash64(s)
+		if a != b {
+			t.Fatalf("hash64 not deterministic for %q: %d vs %d", s, a, b)
 		}
 	})
 }
