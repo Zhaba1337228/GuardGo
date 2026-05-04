@@ -52,7 +52,13 @@ jobs:
 
       - name: Coverage
         if: matrix.os == 'ubuntu-latest'
-        run: go test -covermode=atomic -coverprofile=coverage.txt -timeout=5m ./...
+        run: |
+          go test \
+            -covermode=atomic \
+            -coverprofile=coverage.txt \
+            -coverpkg=./... \
+            -timeout=10m \
+            ./...
 
       - name: Upload coverage artifact
         if: matrix.os == 'ubuntu-latest'
@@ -67,8 +73,57 @@ jobs:
         uses: codecov/codecov-action@v4
         with:
           files: coverage.txt
+          flags: unittests
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
+
+  integration:
+    name: integration (real redis)
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+
+      - name: Integration tests with coverage
+        env:
+          REDIS_ADDR: 127.0.0.1:6379
+        run: |
+          go test \
+            -covermode=atomic \
+            -coverprofile=coverage-int.txt \
+            -coverpkg=./... \
+            -timeout=15m \
+            ./tests/integration/... ./tests/load/...
+
+      - name: Upload integration coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage-int.txt
+          flags: integration
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload integration coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-integration
+          path: coverage-int.txt
+          if-no-files-found: ignore
 
   lint:
     name: lint
