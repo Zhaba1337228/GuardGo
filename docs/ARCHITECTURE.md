@@ -36,9 +36,7 @@
 - `cmd/guardgo-cli/main.go`: realtime terminal dashboard (risk top, active blocks, DFA stats).
 
 ## Framework Adapters
-- `adapters/gin/gin.go`: Gin adapter built on top of `guardgo.Engine`.
-- `adapters/echo/echo.go`: Echo adapter built on top of `guardgo.Engine`.
-- `adapters/fiber/fiber.go`: Fiber adapter built on top of `guardgo.Engine`.
+- `frameworks.go`: unified `Gin`, `Echo`, and `Fiber` middleware constructors built on top of `guardgo.Engine`.
 
 ## Rules
 - `rules/basic.go`: reusable built-in rules for URL, query, and headers.

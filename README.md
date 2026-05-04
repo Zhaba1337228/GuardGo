@@ -80,11 +80,6 @@ e.Use(guardgo.Echo(engine))
 app.Use(guardgo.Fiber(engine))
 ```
 
-Legacy adapters:
-- `guardgo/adapters/gin`
-- `guardgo/adapters/echo`
-- `guardgo/adapters/fiber`
-
 ## Security Model
 
 GuardGo evaluates traffic using a score pipeline:
