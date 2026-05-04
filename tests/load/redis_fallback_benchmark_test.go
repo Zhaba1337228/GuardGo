@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/Zhaba1337228/GuardGo"
+	"github.com/redis/go-redis/v9"
 )
 
 func BenchmarkRedisFallbackRealRedis(b *testing.B) {
